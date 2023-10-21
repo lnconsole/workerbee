@@ -23,11 +23,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pynvml.smi import nvidia_smi
 import pyopencl
 from dotenv import load_dotenv
+from nostr.filter import Filter, Filters
+from nostr.event import EventKind
+from nostr.key import PublicKey, PrivateKey
 
 from gguf_loader.main import get_size
 
 from .gguf_reader import GGUFReader
 from .version import VERSION
+from .nostr import getDM, connect, publishDM, subscribe
 
 APP_NAME = "gputopia"
 ENV_PREFIX = APP_NAME.upper()
@@ -38,6 +42,18 @@ log = logging.getLogger(__name__)
 
 load_dotenv()
 
+WORKER_NSEC = PrivateKey.from_nsec(os.environ.get("WORKER_NSEC"))
+WORKER_PK = WORKER_NSEC.hex()
+COORDINATOR_PK = PublicKey.from_npub(os.environ.get("COORDINATOR_NPUB")).hex()
+
+connect()
+subscribe(Filters([
+    Filter(
+        authors=[COORDINATOR_PK],
+        kinds=[EventKind.ENCRYPTED_DIRECT_MESSAGE],
+        pubkey_refs=[WORKER_PK],
+    )
+]))
 
 class Req(BaseModel):
     openai_url: str
@@ -143,18 +159,36 @@ class WorkerMain:
         if self.conf.test_model:
             await self.test_model()
             return
+        
+        await self.run_ws()
+        
+        # publishDM(
+        #     "aaedcba04cdb88654162b26f41bc15587ffb675124cba2c9d206d411fdf9d507",
+        #     "hello world"
+        # )
+        # subscribe(Filters([
+        #     Filter(
+        #         authors=["f6cfc0446ff6bd5eb9056af16de84b9349fdba01fefbce37155ad8354089a574"],
+        #         kinds=[EventKind.ENCRYPTED_DIRECT_MESSAGE],
+        #     )
+        # ]))
 
-        async for websocket in websockets.connect(self.conf.queen_url):
-            if self.stopped:
-                break
-            try:
-                await self.run_ws(websocket)
-            except websockets.ConnectionClosed:
-                continue
-            except Exception:
-                log.exception("error in worker")
-            if self.stopped:
-                break
+        # sk = private_key()
+        # pk = sk.public_key
+        # print(f"Private key: {sk.bech32()}")
+        # print(f"Public key: {pk.bech32()}")
+
+        # async for websocket in websockets.connect(self.conf.queen_url):
+        #     if self.stopped:
+        #         break
+        #     try:
+        #         await self.run_ws(websocket)
+        #     except websockets.ConnectionClosed:
+        #         continue
+        #     except Exception:
+        #         log.exception("error in worker")
+        #     if self.stopped:
+        #         break
 
     async def guess_layers(self, model_path):
         if self.conf.force_layers:
@@ -262,23 +296,29 @@ class WorkerMain:
         info = self.connect_info()
         return info.model_dump_json()
 
-    async def run_ws(self, ws: websockets.WebSocketCommonProtocol):
+    async def run_ws(self):
         msg = self.connect_message()
         log.info("connect queen: %s", msg)
-        await ws.send(msg)
+        publishDM(
+            COORDINATOR_PK,
+            msg
+        )
 
         loops = 0
         while not self.stopped:
             try:
-                await self.run_one(ws)
+                await self.run_one()
             finally:
                 loops += 1
                 if self.conf.loops and loops == self.conf.loops:
                     await asyncio.sleep(1)
                     self.stopped = True
 
-    async def run_one(self, ws: websockets.WebSocketCommonProtocol):
-        req_str = await ws.recv()
+    async def run_one(self):
+        req_event = getDM(COORDINATOR_PK)
+        req_str = req_event.content
+        print(req_str)
+        # req_str = await ws.recv()
         try:
             req = Req.model_validate_json(req_str)
             model = req.openai_req.get("model")
@@ -292,16 +332,20 @@ class WorkerMain:
                 async with aconnect_sse(self.llama_cli, "POST", req.openai_url, json=req.openai_req) as sse:
                     async for event in sse.aiter_sse():
                         if event.data != "[DONE]":
-                            await ws.send(event.data)
-                await ws.send("{}")
+                            publishDM(COORDINATOR_PK, event.data)
+                            # await ws.send(event.data)
+                publishDM(COORDINATOR_PK, "{}")
+                # await ws.send("{}")
             else:
                 res: Response = await self.llama_cli.post(req.openai_url, json=req.openai_req)
-                await ws.send(res.text)
+                publishDM(COORDINATOR_PK, res.text)
+                # await ws.send(res.text)
             en = time.monotonic()
             log.info("done %s (%s secs)", model, en - st)
         except Exception as ex:
             log.exception("error running request: %s", req_str)
-            await ws.send(json.dumps({"error": str(ex), "error_type": type(ex).__name__}))
+            publishDM(COORDINATOR_PK, json.dumps({"error": str(ex), "error_type": type(ex).__name__}))
+            # await ws.send(json.dumps({"error": str(ex), "error_type": type(ex).__name__}))
 
     async def get_model(self, name):
         return await self.download_model(name)

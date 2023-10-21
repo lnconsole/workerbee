@@ -1,0 +1,75 @@
+import os
+import ssl
+import time
+import random
+import string
+from nostr.relay_manager import RelayManager
+from nostr.key import PrivateKey
+from nostr.filter import Filter, Filters
+from nostr.event import Event, EventKind, EncryptedDirectMessage
+from nostr.message_type import ClientMessageType
+
+sk = PrivateKey.from_nsec(os.environ['WORKER_NSEC'])
+pk = sk.public_key
+relay = os.environ['NOSTR_RELAY']
+relay_manager = None
+
+def connect():
+    global relay_manager
+
+    print("connecting")
+
+    relay_manager = RelayManager()
+    relay_manager.add_relay(relay)
+    time.sleep(1.25) # allow the connections to open
+
+    print("connected")
+    return
+
+def subscribe(filters):
+    global relay_manager, sk
+
+    print("subscribing")
+    subscription_id = gen_random_string()
+    relay_manager.add_subscription_on_all_relays(subscription_id, filters)
+    time.sleep(1.25) # allow the connections to open
+    print("subscribed")
+
+    # while relay_manager.message_pool.has_events():
+    #     event_msg = relay_manager.message_pool.get_event()
+    #     if event_msg.event.kind == EventKind.ENCRYPTED_DIRECT_MESSAGE:
+    #         dm = sk.decrypt_message(event_msg.event.content, "aaedcba04cdb88654162b26f41bc15587ffb675124cba2c9d206d411fdf9d507")
+    #         print(dm)
+    #     else:
+    #         print(event_msg.event.content)
+    return
+
+def publishDM(pubkey, content):
+    global sk, relay_manager
+
+    print("publishing")
+    dm = EncryptedDirectMessage(
+        recipient_pubkey=pubkey,
+        cleartext_content=content
+    )
+    sk.sign_event(dm)
+    print(dm)
+    relay_manager.publish_event(dm)
+    print("published")
+
+    return
+
+def getDM(sender_pk):
+    global relay_manager, sk
+    while True:
+        event_msg = relay_manager.message_pool.get_event()
+        print("got event: ", event_msg.event)
+        if event_msg.event.kind == EventKind.ENCRYPTED_DIRECT_MESSAGE and event_msg.event.public_key == sender_pk:
+            dm = sk.decrypt_message(
+                encoded_message=event_msg.event.content, 
+                public_key_hex=sender_pk
+            )
+            return dm
+
+def gen_random_string():
+    return ''.join(random.choice(string.ascii_letters) for i in range(10))
