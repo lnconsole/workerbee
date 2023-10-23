@@ -13,7 +13,6 @@ from pprint import pprint
 from typing import Optional, List
 
 import psutil
-import websockets
 from httpx import Response, AsyncClient
 from httpx_sse import aconnect_sse
 from llama_cpp.server.app import Settings as LlamaSettings, create_app as create_llama_app
@@ -42,11 +41,12 @@ log = logging.getLogger(__name__)
 
 load_dotenv()
 
-WORKER_NSEC = PrivateKey.from_nsec(os.environ.get("WORKER_NSEC"))
-WORKER_PK = WORKER_NSEC.hex()
+WORKER_NSEC = os.environ.get("WORKER_NSEC")
+WORKER_PK = PrivateKey.from_nsec(WORKER_NSEC).hex()
 COORDINATOR_PK = PublicKey.from_npub(os.environ.get("COORDINATOR_NPUB")).hex()
+RELAY = os.environ.get("NOSTR_RELAY")
 
-connect()
+connect(WORKER_NSEC, RELAY)
 subscribe(Filters([
     Filter(
         authors=[COORDINATOR_PK],
@@ -288,8 +288,7 @@ class WorkerMain:
     async def run_one(self):
         req_event = await get_dm(COORDINATOR_PK)
         req_str = req_event.content
-        print(req_str)
-        # req_str = await ws.recv()
+
         try:
             req = Req.model_validate_json(req_str)
             model = req.openai_req.get("model")

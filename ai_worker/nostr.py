@@ -5,25 +5,22 @@ import random
 import string
 from nostr.relay_manager import RelayManager
 from nostr.key import PrivateKey
-from nostr.filter import Filter, Filters
-from nostr.event import Event, EventKind, EncryptedDirectMessage
-from nostr.message_type import ClientMessageType
+from nostr.event import EventKind, EncryptedDirectMessage
 
-sk = PrivateKey.from_nsec(os.environ['WORKER_NSEC'])
-pk = sk.public_key
-relay = os.environ['NOSTR_RELAY']
+sk = None
+pk = None
 relay_manager = None
 
-def connect():
-    global relay_manager
+def connect(nsec, relay):
+    global relay_manager, sk, pk
 
-    print("connecting")
+    sk = PrivateKey.from_nsec(nsec)
+    pk = sk.public_key
 
     relay_manager = RelayManager()
     relay_manager.add_relay(relay)
     time.sleep(1.25) # allow the connections to open
 
-    print("connected")
     return
 
 def subscribe(filters):
@@ -38,15 +35,12 @@ def subscribe(filters):
 def publish_dm(pubkey, content):
     global sk, relay_manager
 
-    print("publishing")
     dm = EncryptedDirectMessage(
         recipient_pubkey=pubkey,
         cleartext_content=content
     )
     sk.sign_event(dm)
-    print(dm)
     relay_manager.publish_event(dm)
-    print("published")
 
     return
 

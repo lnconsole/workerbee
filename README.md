@@ -65,11 +65,10 @@ cmake --install . --prefix C:/CLBlast
 
 `CMAKE_ARGS="-DLLAMA_CLBLAST=ON -DCMAKE_PREFIX_PATH=C:/CLBlast/lib/cmake/CLBlast" FORCE_CMAKE=1 poetry install`
 
-
-### Run a dev-mode worker
+### Run a worker that communicates with coordinator via nostr
 - `poetry shell`
+- `cp .env.example .env` and populate the `.env` file
 - `poetry run gputopia_worker`
-
 
 ### Run tests to be sure it really works
 
