@@ -31,7 +31,7 @@ from gguf_loader.main import get_size
 
 from .gguf_reader import GGUFReader
 from .version import VERSION
-from .nostr import getDM, connect, publishDM, subscribe
+from .nostr import get_dm, connect, publish_dm, subscribe
 
 APP_NAME = "gputopia"
 ENV_PREFIX = APP_NAME.upper()
@@ -159,36 +159,7 @@ class WorkerMain:
         if self.conf.test_model:
             await self.test_model()
             return
-        
         await self.run_ws()
-        
-        # publishDM(
-        #     "aaedcba04cdb88654162b26f41bc15587ffb675124cba2c9d206d411fdf9d507",
-        #     "hello world"
-        # )
-        # subscribe(Filters([
-        #     Filter(
-        #         authors=["f6cfc0446ff6bd5eb9056af16de84b9349fdba01fefbce37155ad8354089a574"],
-        #         kinds=[EventKind.ENCRYPTED_DIRECT_MESSAGE],
-        #     )
-        # ]))
-
-        # sk = private_key()
-        # pk = sk.public_key
-        # print(f"Private key: {sk.bech32()}")
-        # print(f"Public key: {pk.bech32()}")
-
-        # async for websocket in websockets.connect(self.conf.queen_url):
-        #     if self.stopped:
-        #         break
-        #     try:
-        #         await self.run_ws(websocket)
-        #     except websockets.ConnectionClosed:
-        #         continue
-        #     except Exception:
-        #         log.exception("error in worker")
-        #     if self.stopped:
-        #         break
 
     async def guess_layers(self, model_path):
         if self.conf.force_layers:
@@ -299,7 +270,7 @@ class WorkerMain:
     async def run_ws(self):
         msg = self.connect_message()
         log.info("connect queen: %s", msg)
-        publishDM(
+        publish_dm(
             COORDINATOR_PK,
             msg
         )
@@ -315,7 +286,7 @@ class WorkerMain:
                     self.stopped = True
 
     async def run_one(self):
-        req_event = getDM(COORDINATOR_PK)
+        req_event = await get_dm(COORDINATOR_PK)
         req_str = req_event.content
         print(req_str)
         # req_str = await ws.recv()
@@ -332,20 +303,16 @@ class WorkerMain:
                 async with aconnect_sse(self.llama_cli, "POST", req.openai_url, json=req.openai_req) as sse:
                     async for event in sse.aiter_sse():
                         if event.data != "[DONE]":
-                            publishDM(COORDINATOR_PK, event.data)
-                            # await ws.send(event.data)
-                publishDM(COORDINATOR_PK, "{}")
-                # await ws.send("{}")
+                            publish_dm(COORDINATOR_PK, event.data)
+                publish_dm(COORDINATOR_PK, "{}")
             else:
                 res: Response = await self.llama_cli.post(req.openai_url, json=req.openai_req)
-                publishDM(COORDINATOR_PK, res.text)
-                # await ws.send(res.text)
+                publish_dm(COORDINATOR_PK, res.text)
             en = time.monotonic()
             log.info("done %s (%s secs)", model, en - st)
         except Exception as ex:
             log.exception("error running request: %s", req_str)
-            publishDM(COORDINATOR_PK, json.dumps({"error": str(ex), "error_type": type(ex).__name__}))
-            # await ws.send(json.dumps({"error": str(ex), "error_type": type(ex).__name__}))
+            publish_dm(COORDINATOR_PK, json.dumps({"error": str(ex), "error_type": type(ex).__name__}))
 
     async def get_model(self, name):
         return await self.download_model(name)

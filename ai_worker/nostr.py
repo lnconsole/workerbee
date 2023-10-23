@@ -29,22 +29,13 @@ def connect():
 def subscribe(filters):
     global relay_manager, sk
 
-    print("subscribing")
     subscription_id = gen_random_string()
     relay_manager.add_subscription_on_all_relays(subscription_id, filters)
     time.sleep(1.25) # allow the connections to open
-    print("subscribed")
 
-    # while relay_manager.message_pool.has_events():
-    #     event_msg = relay_manager.message_pool.get_event()
-    #     if event_msg.event.kind == EventKind.ENCRYPTED_DIRECT_MESSAGE:
-    #         dm = sk.decrypt_message(event_msg.event.content, "aaedcba04cdb88654162b26f41bc15587ffb675124cba2c9d206d411fdf9d507")
-    #         print(dm)
-    #     else:
-    #         print(event_msg.event.content)
     return
 
-def publishDM(pubkey, content):
+def publish_dm(pubkey, content):
     global sk, relay_manager
 
     print("publishing")
@@ -59,10 +50,10 @@ def publishDM(pubkey, content):
 
     return
 
-def getDM(sender_pk):
+async def get_dm(sender_pk):
     global relay_manager, sk
     while True:
-        event_msg = relay_manager.message_pool.get_event()
+        event_msg = await relay_manager.message_pool.get_event()
         print("got event: ", event_msg.event)
         if event_msg.event.kind == EventKind.ENCRYPTED_DIRECT_MESSAGE and event_msg.event.public_key == sender_pk:
             dm = sk.decrypt_message(
