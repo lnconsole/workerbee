@@ -44,17 +44,16 @@ def publish_dm(pubkey, content):
 
     return
 
-async def get_dm(sender_pk):
+def get_dm(sender_pk):
     global relay_manager, sk
     while True:
-        event_msg = await relay_manager.message_pool.get_event()
+        event_msg = relay_manager.message_pool.get_event()
         print("got event: ", event_msg.event)
-        if event_msg.event.kind == EventKind.ENCRYPTED_DIRECT_MESSAGE and event_msg.event.public_key == sender_pk:
-            dm = sk.decrypt_message(
-                encoded_message=event_msg.event.content, 
-                public_key_hex=sender_pk
-            )
-            return dm
+        dm = sk.decrypt_message(
+            encoded_message=event_msg.event.content, 
+            public_key_hex=sender_pk
+        )
+        return dm
 
 def gen_random_string():
     return ''.join(random.choice(string.ascii_letters) for i in range(10))

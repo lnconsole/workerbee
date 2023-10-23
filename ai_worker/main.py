@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 load_dotenv()
 
 WORKER_NSEC = os.environ.get("WORKER_NSEC")
-WORKER_PK = PrivateKey.from_nsec(WORKER_NSEC).hex()
+WORKER_PK = PrivateKey.from_nsec(WORKER_NSEC).public_key.hex()
 COORDINATOR_PK = PublicKey.from_npub(os.environ.get("COORDINATOR_NPUB")).hex()
 RELAY = os.environ.get("NOSTR_RELAY")
 
@@ -52,6 +52,7 @@ subscribe(Filters([
         authors=[COORDINATOR_PK],
         kinds=[EventKind.ENCRYPTED_DIRECT_MESSAGE],
         pubkey_refs=[WORKER_PK],
+        since=int(time.time()),
     )
 ]))
 
@@ -269,7 +270,7 @@ class WorkerMain:
 
     async def run_ws(self):
         msg = self.connect_message()
-        log.info("connect queen: %s", msg)
+
         publish_dm(
             COORDINATOR_PK,
             msg
@@ -286,8 +287,7 @@ class WorkerMain:
                     self.stopped = True
 
     async def run_one(self):
-        req_event = await get_dm(COORDINATOR_PK)
-        req_str = req_event.content
+        req_str = get_dm(COORDINATOR_PK)
 
         try:
             req = Req.model_validate_json(req_str)
